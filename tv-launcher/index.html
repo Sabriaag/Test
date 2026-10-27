@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TV Home</title>
+<style>
+  :root {
+    --bg: #0b0b0f;
+    --fg: #f5f5f7;
+    --muted: #a1a1a6;
+    --focus-ring: rgba(255, 255, 255, 0.95);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    overflow: hidden;
+    cursor: default;
+  }
+
+  /* Top shelf: large hero that previews the focused app */
+  .shelf {
+    position: relative;
+    height: 52vh;
+    display: flex;
+    align-items: flex-end;
+    padding: 0 5vw 4vh;
+    transition: background 0.5s ease;
+  }
+  .shelf::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0) 40%, var(--bg) 100%);
+    pointer-events: none;
+  }
+  .shelf-content { position: relative; z-index: 1; max-width: 60vw; }
+  .shelf-title { font-size: 5vw; font-weight: 700; letter-spacing: -0.02em; }
+  .shelf-sub { font-size: 1.6vw; color: rgba(255,255,255,0.8); margin-top: 1vh; }
+
+  .clock {
+    position: absolute; top: 4vh; right: 5vw; z-index: 2;
+    font-size: 1.8vw; font-weight: 500; color: rgba(255,255,255,0.9);
+  }
+
+  /* App grid */
+  .apps {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 3vh 2.2vw;
+    padding: 2vh 5vw 6vh;
+  }
+  .app {
+    display: flex; flex-direction: column; align-items: center;
+    text-decoration: none; color: var(--fg); outline: none;
+  }
+  .tile {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border-radius: 1.2vw;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800;
+    font-size: 1.8vw;
+    letter-spacing: -0.01em;
+    box-shadow: 0 0.6vw 1.6vw rgba(0,0,0,0.5);
+    transition: transform 0.22s cubic-bezier(.2,.8,.2,1), box-shadow 0.22s;
+    position: relative;
+    overflow: hidden;
+  }
+  /* Glossy highlight like tvOS parallax icons */
+  .tile::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(160deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 45%);
+    opacity: 0; transition: opacity 0.22s;
+  }
+  .label {
+    margin-top: 1.4vh; font-size: 1.1vw; color: var(--muted);
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .app:focus .tile, .app:hover .tile {
+    transform: scale(1.12) translateY(-0.4vh);
+    box-shadow: 0 2vw 3.5vw rgba(0,0,0,0.7), 0 0 0 0.25vw var(--focus-ring);
+  }
+  .app:focus .tile::before, .app:hover .tile::before { opacity: 1; }
+  .app:focus .label, .app:hover .label { opacity: 1; color: var(--fg); }
+
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    .apps { grid-template-columns: repeat(3, 1fr); padding: 2vh 16px 6vh; gap: 16px; }
+    .tile { font-size: 4vw; border-radius: 12px; }
+    .label { font-size: 3vw; opacity: 1; }
+    .shelf { padding: 0 16px 3vh; height: 40vh; }
+    .shelf-title { font-size: 9vw; }
+    .shelf-sub { font-size: 4vw; }
+    .clock { font-size: 4vw; right: 16px; }
+    .shelf-content { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+  <div class="clock" id="clock"></div>
+  <header class="shelf" id="shelf">
+    <div class="shelf-content">
+      <div class="shelf-title" id="shelf-title">Welcome</div>
+      <div class="shelf-sub" id="shelf-sub">Use the arrow keys on your remote, then press OK.</div>
+    </div>
+  </header>
+
+  <main class="apps" id="apps"></main>
+
+<script>
+  // Each app: name, launch URL, tile colors, and a short tagline for the top shelf.
+  const APPS = [
+    { name: "Netflix",      url: "https://www.netflix.com",          bg: "#000000", fg: "#e50914", tag: "Movies & series" },
+    { name: "YouTube",      url: "https://www.youtube.com/tv",       bg: "#ff0000", fg: "#ffffff", tag: "Videos, music & live" },
+    { name: "Tubi",         url: "https://tubitv.com",               bg: "#5b1fd6", fg: "#ffe600", tag: "Free movies & TV" },
+    { name: "Prime Video",  url: "https://www.primevideo.com",       bg: "#00a8e1", fg: "#ffffff", tag: "Originals & rentals" },
+    { name: "Disney+",      url: "https://www.disneyplus.com",       bg: "#0f1a5c", fg: "#ffffff", tag: "Disney, Pixar, Marvel, Star Wars" },
+    { name: "Hulu",         url: "https://www.hulu.com",             bg: "#1ce783", fg: "#0b0c0f", tag: "Current TV & live" },
+    { name: "Max",          url: "https://www.max.com",              bg: "#002be7", fg: "#ffffff", tag: "HBO & more" },
+    { name: "Apple TV+",    url: "https://tv.apple.com",             bg: "#1c1c1e", fg: "#ffffff", tag: "Apple Originals" },
+    { name: "Peacock",      url: "https://www.peacocktv.com",        bg: "#000000", fg: "#ffffff", tag: "NBC, sports & news" },
+    { name: "Paramount+",   url: "https://www.paramountplus.com",    bg: "#0064ff", fg: "#ffffff", tag: "CBS, sports & movies" },
+    { name: "Pluto TV",     url: "https://pluto.tv",                 bg: "#fff200", fg: "#000000", tag: "Free live channels" },
+    { name: "Crunchyroll",  url: "https://www.crunchyroll.com",      bg: "#f47521", fg: "#ffffff", tag: "Anime" },
+    { name: "Twitch",       url: "https://www.twitch.tv",            bg: "#9146ff", fg: "#ffffff", tag: "Live streams" },
+    { name: "Spotify",      url: "https://open.spotify.com",         bg: "#1db954", fg: "#000000", tag: "Music & podcasts" },
+    { name: "YouTube Music",url: "https://music.youtube.com",        bg: "#212121", fg: "#ff0033", tag: "Music" },
+    { name: "Plex",         url: "https://app.plex.tv",              bg: "#1f1f1f", fg: "#e5a00d", tag: "Your media & free TV" },
+    { name: "Roku Channel", url: "https://therokuchannel.roku.com",  bg: "#6c3c97", fg: "#ffffff", tag: "Free movies & TV" },
+    { name: "Pandora",      url: "https://www.pandora.com",          bg: "#224099", fg: "#ffffff", tag: "Radio & music" },
+  ];
+
+  const grid = document.getElementById("apps");
+  const shelf = document.getElementById("shelf");
+  const shelfTitle = document.getElementById("shelf-title");
+  const shelfSub = document.getElementById("shelf-sub");
+
+  APPS.forEach((app, i) => {
+    const a = document.createElement("a");
+    a.className = "app";
+    a.href = app.url;
+    a.tabIndex = 0;
+    a.dataset.index = i;
+    a.innerHTML =
+      `<div class="tile" style="background:${app.bg};color:${app.fg}">${app.name}</div>` +
+      `<div class="label">${app.name}</div>`;
+    a.addEventListener("focus", () => showOnShelf(app));
+    a.addEventListener("mouseenter", () => a.focus());
+    grid.appendChild(a);
+  });
+
+  function showOnShelf(app) {
+    shelf.style.background = `radial-gradient(ellipse at 70% 30%, ${app.bg} 0%, #000 75%)`;
+    shelfTitle.textContent = app.name;
+    shelfTitle.style.color = app.fg === "#000000" || app.fg === "#0b0c0f" ? "#fff" : app.fg;
+    shelfSub.textContent = app.tag;
+  }
+
+  // Remote-control (D-pad) navigation: TV browsers send arrow keys + Enter.
+  function columns() {
+    return getComputedStyle(grid).gridTemplateColumns.split(" ").length;
+  }
+  document.addEventListener("keydown", (e) => {
+    const tiles = [...grid.children];
+    const cur = tiles.indexOf(document.activeElement);
+    if (cur < 0) { tiles[0].focus(); e.preventDefault(); return; }
+    const cols = columns();
+    let next = cur;
+    switch (e.key) {
+      case "ArrowRight": next = Math.min(cur + 1, tiles.length - 1); break;
+      case "ArrowLeft":  next = Math.max(cur - 1, 0); break;
+      case "ArrowDown":  next = Math.min(cur + cols, tiles.length - 1); break;
+      case "ArrowUp":    next = Math.max(cur - cols, 0); break;
+      case "Enter":      tiles[cur].click(); return;
+      default: return;
+    }
+    e.preventDefault();
+    tiles[next].focus();
+    tiles[next].scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
+
+  function tick() {
+    document.getElementById("clock").textContent =
+      new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  tick(); setInterval(tick, 10000);
+
+  grid.firstElementChild.focus();
+</script>
+</body>
+</html>
